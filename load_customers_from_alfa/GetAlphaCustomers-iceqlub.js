@@ -8,16 +8,42 @@ let lastSyncCell = null;
 let prevSyncDateString = undefined;
 let lastSyncDate = undefined;
 
+const authData = {
+  email: 'E.m.belotserkovskaya@gmail.com',
+  api_key: '551bcd27-bd28-11eb-b74c-ac1f6b4782be'
+}
+
 const PAGE_SIZE = 50;
 
 
 // TODO:
 // Statuses, reasons and etc - are not updated
 // Run on schedule
+// TS: https://developers.google.com/apps-script/guides/typescript
 
 
+function _getCustomerFinalStatus(customer) {
 
-function loadData() {
+  if (customer.lead_reject_name && customer.lead_reject_name !== 'No reason') {
+    return customer.lead_reject_name
+  }
+
+  if (customer.lead_reject_name && customer.lead_reject_name === 'No reason') {
+    if (['Активен', 'Активен/Израиль', 'Закрытые'].includes(customer.study_status_name)) {
+      return 'Купил абонемент'
+    }
+    if (customer.study_status_name === "No status") {
+      return customer.lead_status_name
+    }
+
+  }
+
+  return '! Необработанный случай'
+
+}
+
+
+function loadAllData() {
 
   updateAuthToken();
   // console.log(authToken);
@@ -65,6 +91,7 @@ function loadCustomers() {
     customer.study_status_name = customer.study_status_id ? _getCustomerStatusTitle(customer.study_status_id) : 'No status';
     customer.lead_reject_name = customer.lead_reject_id ? _getLeadRejectReason(customer.lead_reject_id) : 'No reason';
     customer.lead_source_name = customer.lead_source_id ? _getLeadSource(customer.lead_source_id) : '';
+    customer.lead_final_status = _getCustomerFinalStatus(customer);
   })
 
   const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('customers');
@@ -485,10 +512,7 @@ function loadLeadSources() {
 
 // Update auth token
 function updateAuthToken() {
-  const authData = {
-    email: 'E.m.belotserkovskaya@gmail.com',
-    api_key: '551bcd27-bd28-11eb-b74c-ac1f6b4782be'
-  }
+
   const url = BASE_URL + `/auth/login`;
   const response = UrlFetchApp.fetch(url, {
     'method': 'post',
