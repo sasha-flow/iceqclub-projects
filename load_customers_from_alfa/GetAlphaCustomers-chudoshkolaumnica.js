@@ -94,6 +94,7 @@ function loadCustomers() {
     customer.lead_reject_name = customer.lead_reject_id ? _getLeadRejectReason(customer.lead_reject_id) : 'No reason';
     customer.lead_source_name = customer.lead_source_id ? _getLeadSource(customer.lead_source_id) : '';
     customer.lead_final_status = _getCustomerFinalStatus(customer);
+    customer.branches = customer.branch_ids.join(',');
     customer.lead_branch = _getCustomerBranchName(customer);
   })
 
