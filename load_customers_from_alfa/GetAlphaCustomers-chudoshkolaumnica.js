@@ -1,8 +1,11 @@
-const BASE_URL = 'https://chudoshkolaumnica.s20.online/v2api/1';
+const BASE_URL = 'https://chudoshkolaumnica.s20.online/v2api';
+const BASE_URL_WITH_BRANCH = BASE_URL + '/1';
 let authToken = '';
 let leadStatuses = [];
 let customerStatuses = [];
 let leadRejectReasons = [];
+// branches like 
+// [{"id":2,"name":"Верхняя Первомайская 59\\35-2","subject_ids":[1,2,3,4,5,6,7,10,12,14,15,16,17,19,20,21,23,24,25,27,28,29,31,33,35,36,39,40,41,42,43,44,45,46,47,48,49,50,51,52,54,55,56,57,58,59,60,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99,100,101,102,104,105,106,107,108,109,110,111,112,113,114,115,116,117,118,119,120,121,122,123,124,125,126,127,128,129,130,131,132,133,134,135,136,137,138,139,142],"is_active":1,"weight":1},{"id":5,"name":"Монтессори-парк","subject_ids":[1,2,3,4,5,6,7,10,12,14,15,16,17,18,19,20,21,22,23,24,25,27,28,29,31,33,36,41,42,43,44,45,46,47,48,49,54,55,56,57,58,59,60,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99,100,101,102,104,105,106,107,108,109,110,111,112,113,114,115,116,117,118,119,120,121,122,123,124,125,126,127,128,129,130,131,132,133,134,135,136,137,138,139,141,142],"is_active":1,"weight":2},{"id":4,"name":"Первомайская 42к1","subject_ids":[1,3,4,5,6,7,10,12,13,14,15,16,17,18,19,20,21,23,24,27,28,29,31,33,36,41,42,43,44,45,46,47,48,49,54,55,56,57,58,59,60,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99,100,101,102,104,105,106,107,108,109,110,111,112,113,114,115,116,117,118,119,120,121,122,123,124,125,126,127,128,129,130,131,132,133,134,135,136,137,138,139,140,142],"is_active":1,"weight":3},{"id":3,"name":"Сиреневый бульвар 62-1","subject_ids":[1,2,3,4,5,6,7,10,12,14,15,16,17,19,20,21,23,24,25,27,28,29,31,32,33,36,39,41,42,43,44,45,46,47,48,49,53,54,55,56,57,58,59,60,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99,100,101,102,104,105,106,107,108,109,110,111,112,113,114,115,116,117,118,119,120,121,122,123,124,125,126,127,128,129,130,131,132,133,134,135,136,137,138,139,142],"is_active":1,"weight":4},{"id":6,"name":"АРТ","subject_ids":[2,4,14,25,26,32,39,47,103,116,124,128,143,144,145],"is_active":1,"weight":5},{"id":1,"name":"ОТДЕЛ ПРОДАЖ","subject_ids":[1,2,5,7,12,16,24,25,26,28,31,32,33,39,60],"is_active":1,"weight":6}]
 let branches = [];
 let leadSources = [];
 let lastSyncCell = null;
@@ -69,22 +72,26 @@ function loadAllData() {
 function loadCustomers() {
   const customers = [];
 
-  let currentPage = 0;
-  let isCustomersLeft = true;
-  while (isCustomersLeft) {
-    Logger.log(`Fetching customers page ${currentPage}`)
-    const result = _fetchCustomers(currentPage);
-    Logger.log(`After fetching, page ${currentPage}, result.page ${result.page}, result.count ${result.count}, result.total ${result.total}`);
-    customers.push(...result.items);
-    if (result.total <= (result.page + 1) * PAGE_SIZE) {
-      // No data left to fetch
-      isCustomersLeft = false;
-      break;
-    }
-    currentPage++;
-  }
 
-  Logger.log(`Fetched ${customers.length} customers updated since ${prevSyncDateString}`);
+  branches.forEach(branch => {
+    let currentPage = 0;
+    let isCustomersLeft = true;
+    while (isCustomersLeft) {
+      Logger.log(`Fetching branch ${branch.id} customers page ${currentPage}`)
+      const result = _fetchCustomers(currentPage, branch.id);
+      Logger.log(`After fetching, branch ${branch.id} page ${currentPage}, result.page ${result.page}, result.count ${result.count}, result.total ${result.total}`);
+      customers.push(...result.items);
+      if (result.total <= (result.page + 1) * PAGE_SIZE) {
+        // No data left to fetch
+        isCustomersLeft = false;
+        break;
+      }
+      currentPage++;
+    }
+
+    Logger.log(`Fetched ${customers.length} customers updated since ${prevSyncDateString}`);
+  })
+
 
   // Inject status in customers
   customers.forEach(customer => {
@@ -158,8 +165,8 @@ function loadCustomers() {
 }
 
 
-function _fetchCustomers(pageNumber, attempt = 1) {
-  const url = BASE_URL + `/customer/index`;
+function _fetchCustomers(pageNumber, branch, attempt = 1) {
+  const url = BASE_URL + `/${branch}/customer/index`;
   const options = {
     'method': 'post',
     'contentType': 'application/json',
@@ -190,7 +197,7 @@ function _fetchCustomers(pageNumber, attempt = 1) {
     } else if (responseCode === 401 && attempt === 1) {
       Logger.log(`Fetching customers with 401. Refetching with token update...`);
       updateAuthToken();
-      return _fetchCustomers(pageNumber, 2);
+      return _fetchCustomers(pageNumber, branch, 2);
     }
     else {
       Logger.log(`Fetching error or 2nd time 401. responseCode: ${responseCode}. rethrow`);
@@ -206,7 +213,7 @@ function _fetchCustomers(pageNumber, attempt = 1) {
 
 // Load lead statuses
 function loadLeadStatuses() {
-  const url = BASE_URL + `/lead-status/index`;
+  const url = BASE_URL_WITH_BRANCH + `/lead-status/index`;
   const options = {
     'method': 'post',
     'contentType': 'application/json',
@@ -283,7 +290,7 @@ function loadLeadStatuses() {
 
 // load customer statuses
 function loadCustomerStatuses() {
-  const url = BASE_URL + `/study-status/index`;
+  const url = BASE_URL_WITH_BRANCH + `/study-status/index`;
   const options = {
     'method': 'post',
     'contentType': 'application/json',
@@ -361,7 +368,7 @@ function loadCustomerStatuses() {
 
 // Load lead reject reasons
 function loadRejectReasons() {
-  const url = BASE_URL + `/lead-reject/index`;
+  const url = BASE_URL_WITH_BRANCH + `/lead-reject/index`;
   const options = {
     'method': 'post',
     'contentType': 'application/json',
@@ -439,7 +446,7 @@ function loadRejectReasons() {
 
 // Load lead sources
 function loadLeadSources() {
-  const url = BASE_URL + `/lead-source/index`;
+  const url = BASE_URL_WITH_BRANCH + `/lead-source/index`;
   const options = {
     'method': 'post',
     'contentType': 'application/json',
@@ -516,7 +523,7 @@ function loadLeadSources() {
 
 // Load branches
 function loadBranches() {
-  const url = BASE_URL + `/branch/index`;
+  const url = BASE_URL_WITH_BRANCH + `/branch/index`;
   const options = {
     'method': 'post',
     'contentType': 'application/json',
@@ -558,10 +565,10 @@ function loadBranches() {
   const newRows = [];
 
   branches.forEach(source => {
-    const existingBranch = existingBranches[source.id];
-    if (existingBranch) {
+    const isExistingBranch = existingBranches[source.id];
+    if (isExistingBranch) {
       // Parse existing and new `updated_at` timestamps
-      const existingUpdatedAt = new Date(existingBranch[updatedAtIndex]);
+      const existingUpdatedAt = new Date(isExistingBranch[updatedAtIndex]);
       const newUpdatedAt = new Date(source.updated_at);
 
       // Update the row if the new data is more recent
@@ -570,7 +577,7 @@ function loadBranches() {
         updatedRows.push({ id: source.id, row: updatedRow });
       }
     } else {
-      // Prepare new customer rows for insertion
+      // Prepare new branch rows for insertion
       const newRow = headers.map(header => source[header] || '');
       newRows.push(newRow);
     }
@@ -582,7 +589,7 @@ function loadBranches() {
     sheet.getRange(rowIndex, 1, 1, row.length).setValues([row]);
   });
 
-  // Append new customer rows
+  // Append new branch rows
   if (newRows.length > 0) {
     sheet.getRange(sheet.getLastRow() + 1, 1, newRows.length, newRows[0].length).setValues(newRows);
   }
@@ -594,7 +601,7 @@ function loadBranches() {
 // Update auth token
 function updateAuthToken() {
 
-  const url = BASE_URL + `/auth/login`;
+  const url = BASE_URL_WITH_BRANCH + `/auth/login`;
   const response = UrlFetchApp.fetch(url, {
     'method': 'post',
     'contentType': 'application/json',
