@@ -12,6 +12,11 @@ let lastSyncCell = null;
 let prevSyncDateString = undefined;
 let lastSyncDate = undefined;
 
+
+const BRANCH_ID_COLUMN = 'branch_id';
+const BRANCH_NAME_COLUMN = 'branch';
+const UPDATED_AT_COLUMN = 'updated_at';
+
 const authData = {
   email: 'E.m.belotserkovskaya@gmail.com',
   api_key: '75d8dd82-2d7d-11ef-b9b8-3cecefbdd1ae'
@@ -70,17 +75,18 @@ function loadAllData() {
 
 
 function loadCustomers() {
-  const customers = [];
+  const allBranchesCustomers = [];
 
 
   branches.forEach(branch => {
+    const branchCustomers = [];
     let currentPage = 0;
     let isCustomersLeft = true;
     while (isCustomersLeft) {
       Logger.log(`Fetching branch ${branch.id} customers page ${currentPage}`)
       const result = _fetchCustomers(currentPage, branch.id);
       Logger.log(`After fetching, branch ${branch.id} page ${currentPage}, result.page ${result.page}, result.count ${result.count}, result.total ${result.total}`);
-      customers.push(...result.items);
+      branchCustomers.push(...result.items);
       if (result.total <= (result.page + 1) * PAGE_SIZE) {
         // No data left to fetch
         isCustomersLeft = false;
@@ -89,22 +95,30 @@ function loadCustomers() {
       currentPage++;
     }
 
-    Logger.log(`Fetched ${customers.length} customers updated since ${prevSyncDateString}`);
+    Logger.log(`Fetched ${branchCustomers.length} customers updated since ${prevSyncDateString}`);
+
+    // Inject status in customers
+    branchCustomers.forEach(customer => {
+
+      customer.lead_status_name = customer.lead_status_id ? _getLeadStatusTitle(customer.lead_status_id) : 'No status';
+      customer.study_status_name = customer.study_status_id ? _getCustomerStatusTitle(customer.study_status_id) : 'No status';
+      customer.lead_reject_name = customer.lead_reject_id ? _getLeadRejectReason(customer.lead_reject_id) : 'No reason';
+      customer.lead_source_name = customer.lead_source_id ? _getLeadSource(customer.lead_source_id) : '';
+      customer.lead_final_status = _getCustomerFinalStatus(customer);
+      customer[BRANCH_ID_COLUMN] = branch.id;
+      // customer.lead_branch = _getCustomerBranchName(customer);
+      customer[BRANCH_NAME_COLUMN] = _getCustomerBranchNameById(branch.id);
+      customer.branches = customer.branch_ids.join(',');
+    })
+
+    allBranchesCustomers.push(...branchCustomers);
+
   })
 
+  Logger.log('Data load completed.')
+  Logger.log('Merging customers with existing data...');
 
-  // Inject status in customers
-  customers.forEach(customer => {
-
-    customer.lead_status_name = customer.lead_status_id ? _getLeadStatusTitle(customer.lead_status_id) : 'No status';
-    customer.study_status_name = customer.study_status_id ? _getCustomerStatusTitle(customer.study_status_id) : 'No status';
-    customer.lead_reject_name = customer.lead_reject_id ? _getLeadRejectReason(customer.lead_reject_id) : 'No reason';
-    customer.lead_source_name = customer.lead_source_id ? _getLeadSource(customer.lead_source_id) : '';
-    customer.lead_final_status = _getCustomerFinalStatus(customer);
-    customer.branches = customer.branch_ids.join(',');
-    customer.lead_branch = _getCustomerBranchName(customer);
-  })
-
+  // Load existing customers from the sheet
   const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('customers');
   const dataRange = sheet.getDataRange();
   const values = dataRange.getValues();
@@ -115,23 +129,32 @@ function loadCustomers() {
 
   // Find the index of important columns
   const idIndex = headers.indexOf('id');
-  const updatedAtIndex = headers.indexOf('updated_at');
+  const branchIdIndex = headers.indexOf(BRANCH_ID_COLUMN);
+  const updatedAtIndex = headers.indexOf(UPDATED_AT_COLUMN);
 
   // Create a map of existing customers by ID for easy lookup
-  const existingCustomersMap = {};
-  data.forEach(row => {
-    const id = row[idIndex];
-    if (id) {
-      existingCustomersMap[id] = row;
-    }
-  });
+  // const existingCustomersMap = {};
+  // data.forEach(row => {
+  //   const id = row[idIndex];
+  //   if (id) {
+  //     existingCustomersMap[id] = row;
+  //   }
+  // });
+
 
   // Prepare arrays for new and updated rows
   const updatedRows = [];
   const newRows = [];
 
-  customers.forEach(customer => {
-    const existingCustomer = existingCustomersMap[customer.id];
+  allBranchesCustomers.forEach(customer => {
+    // const existingCustomer = existingCustomersMap[customer[ID_COLUMN]];
+    // const existingCustomer = existingCustomersList.find(customer => {
+    //   return customer.id === customer.id && customer[BRANCH_ID_COLUMN] === customer[BRANCH_ID_COLUMN]
+    // });
+    const existingCustomer = data.filter(cust => {
+      return cust[idIndex] === customer.id && cust[branchIdIndex] === customer[BRANCH_ID_COLUMN]
+    })[0];
+
     if (existingCustomer) {
       // Parse existing and new `updated_at` timestamps
       const existingUpdatedAt = new Date(existingCustomer[updatedAtIndex]);
@@ -667,7 +690,8 @@ function _getLeadSource(targetId) {
 }
 
 
-function _getCustomerBranchName(customer) {
+
+function _getCustomerBranchNameByCustomer(customer) {
   if (customer && customer.branch_ids && customer.branch_ids.length > 0) {
     const foundBranches = branches.filter(branch => {
       return branch.id === customer.branch_ids[0]
@@ -678,4 +702,16 @@ function _getCustomerBranchName(customer) {
     return foundBranches[0].name
   }
   return '';
+}
+
+function _getCustomerBranchNameById(id) {
+
+  const foundBranches = branches.filter(branch => {
+    return branch.id === id
+  });
+  if (foundBranches.length === 0) {
+    return 'UNKNOWN BRANCH'
+  }
+  return foundBranches[0].name
+
 }
